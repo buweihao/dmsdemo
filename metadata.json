@@ -1,0 +1,6 @@
+{
+  "name": "电力牵引站 - 圆欣智能变电站数字孪生系统",
+  "description": "电力牵引站 3D 数字孪生可视化监控系统，包含设备规模、感知设备、负荷变化预测、设备统计及主控室与高压室三维交互巡检。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
