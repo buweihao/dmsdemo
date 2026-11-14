@@ -133,7 +133,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         {/* Center Main System Title */}
         <div className="absolute inset-x-0 top-1.5 flex flex-col items-center justify-center pointer-events-none">
           <h1 className="text-[19px] md:text-[21px] font-bold tracking-[0.08em] text-[var(--accent)] whitespace-nowrap hud-title-shadow">
-            圆欣智能变电站数字孪生系统
+            正牧储能管理系统
           </h1>
         </div>
 

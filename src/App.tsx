@@ -133,7 +133,7 @@ export default function App() {
   useEffect(() => {
     document.title =
       activeSection === 'twin'
-        ? '电力牵引站 - 圆欣智能变电站数字孪生系统'
+        ? '首页 · 正牧储能管理系统'
         : `${pageTitle} · 正牧储能管理系统`;
   }, [activeSection, pageTitle]);
 
@@ -248,7 +248,7 @@ export default function App() {
         {activeSection === 'twin' ? (
           <section
             className="relative flex-1 min-h-0 w-full overflow-hidden bg-[var(--hud-popup-bg)]"
-            aria-label="圆欣智能变电站3D数字孪生系统"
+            aria-label="正牧储能管理系统3D数字孪生视图"
             data-active-scene={activeScene}
           >
             <SubstationCanvas
