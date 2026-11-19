@@ -64,7 +64,7 @@ export const EmsHeader: React.FC<EmsHeaderProps> = ({
           type="button"
           className="brand"
           aria-label="返回正牧储能管理系统首页"
-          onClick={() => onSelectSection('twin')}
+          onClick={() => onSelectSection('home')}
         >
           <img
             src={EMS_BRAND_LOGO}

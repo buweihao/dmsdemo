@@ -22,7 +22,7 @@ export function resolvePageTitle(params: {
   strategyModule: StrategyModuleKey;
 }): string {
   switch (params.section) {
-    case 'twin':
+    case 'home':
       return '首页';
     case 'overview':
       return '总览';
@@ -32,6 +32,8 @@ export function resolvePageTitle(params: {
       return params.curveModule;
     case 'strategy':
       return params.strategyModule;
+    case 'twin':
+      return '3D监控';
   }
 }
 

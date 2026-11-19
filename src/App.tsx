@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { EmsCurvesPage } from './components/ems/EmsCurvesPage';
 import { EmsDevicesPage } from './components/ems/EmsDevicesPage';
 import { EmsHeader } from './components/ems/EmsHeader';
+import { EmsHomePage } from './components/ems/EmsHomePage';
 import { EmsOverviewPage } from './components/ems/EmsOverviewPage';
 import { EmsSidebar } from './components/ems/EmsSidebar';
 import { EmsStrategyPage } from './components/ems/EmsStrategyPage';
@@ -50,8 +51,8 @@ import {
 } from './utils/substationState';
 
 export default function App() {
-  // Unified Navigation, Theme & EMS State (03-glassmorphism + 3D Digital Twin)
-  const [activeSection, setActiveSection] = useState<TopSection>('twin');
+  // Unified Navigation, Theme & EMS State (03-glassmorphism + Flow Schematic + 3D Digital Twin)
+  const [activeSection, setActiveSection] = useState<TopSection>('home');
   const [activeTheme, setActiveTheme] = useState<SystemThemeKey>(DEFAULT_THEME_KEY);
   const [activeDevice, setActiveDevice] = useState<DeviceModuleKey>('PCS数据');
   const [activeCurve, setActiveCurve] = useState<CurveModuleKey>('PCS曲线');
@@ -131,11 +132,8 @@ export default function App() {
   });
 
   useEffect(() => {
-    document.title =
-      activeSection === 'twin'
-        ? '首页 · 正牧储能管理系统'
-        : `${pageTitle} · 正牧储能管理系统`;
-  }, [activeSection, pageTitle]);
+    document.title = `${pageTitle} · 正牧储能管理系统`;
+  }, [pageTitle]);
 
   const themeConfig = getThemeConfig(activeTheme);
 
@@ -322,8 +320,15 @@ export default function App() {
               </div>
 
               <div className="page-content">
-                {activeSection !== 'overview' && (
+                {activeSection !== 'home' && activeSection !== 'overview' && (
                   <div className="section-banner">{pageTitle}</div>
+                )}
+
+                {activeSection === 'home' && (
+                  <EmsHomePage
+                    themeConfig={themeConfig}
+                    onSelectSection={setActiveSection}
+                  />
                 )}
 
                 {activeSection === 'overview' && <EmsOverviewPage />}

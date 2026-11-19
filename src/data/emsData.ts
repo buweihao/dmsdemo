@@ -17,11 +17,12 @@ import type {
 } from '../types/ems';
 
 export const TOP_NAV_ITEMS: Array<{ key: TopSection; label: string }> = [
-  { key: 'twin', label: '首页' },
+  { key: 'home', label: '首页' },
   { key: 'overview', label: '总览' },
   { key: 'devices', label: '设备监控' },
   { key: 'curves', label: '曲线报表' },
   { key: 'strategy', label: '策略' },
+  { key: 'twin', label: '3D监控' },
 ];
 
 export const DEVICE_SIDEBAR_ITEMS: SidebarMenuItem<DeviceModuleKey>[] = [

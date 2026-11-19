@@ -9,6 +9,12 @@ export interface SystemThemeConfig {
   secondaryHex: string;
   warningHex: string;
   successHex: string;
+  positiveLoopHex: string;
+  positiveLoopNum: number;
+  positiveLoopRgb: string;
+  negativeLoopHex: string;
+  negativeLoopNum: number;
+  negativeLoopRgb: string;
   canvasBgNum: number;
   groundGridRgba: string;
   roadHex: number;
@@ -27,6 +33,12 @@ export const SYSTEM_THEMES: SystemThemeConfig[] = [
     secondaryHex: '#e2a5ee',
     warningHex: '#ffd17a',
     successHex: '#71e3ad',
+    positiveLoopHex: '#71e3ad',
+    positiveLoopNum: 0x52de97,
+    positiveLoopRgb: '113, 227, 173',
+    negativeLoopHex: '#65d8f4',
+    negativeLoopNum: 0x45cef2,
+    negativeLoopRgb: '101, 216, 244',
     canvasBgNum: 0x0a1024,
     groundGridRgba: 'rgba(101, 216, 244, 0.14)',
     roadHex: 0x4b9bc9,
@@ -41,6 +53,12 @@ export const SYSTEM_THEMES: SystemThemeConfig[] = [
     secondaryHex: '#818cf8',
     warningHex: '#fbbf24',
     successHex: '#34d399',
+    positiveLoopHex: '#34d399',
+    positiveLoopNum: 0x2dd496,
+    positiveLoopRgb: '52, 211, 153',
+    negativeLoopHex: '#38bdf8',
+    negativeLoopNum: 0x38bdf8,
+    negativeLoopRgb: '56, 189, 248',
     canvasBgNum: 0x061026,
     groundGridRgba: 'rgba(56, 189, 248, 0.14)',
     roadHex: 0x3b82f6,
@@ -55,6 +73,12 @@ export const SYSTEM_THEMES: SystemThemeConfig[] = [
     secondaryHex: '#38bdf8',
     warningHex: '#fbbf24',
     successHex: '#6ee7b7',
+    positiveLoopHex: '#5ce87d',
+    positiveLoopNum: 0x4ade75,
+    positiveLoopRgb: '92, 232, 125',
+    negativeLoopHex: '#38d9c0',
+    negativeLoopNum: 0x2dd4bf,
+    negativeLoopRgb: '56, 217, 192',
     canvasBgNum: 0x061515,
     groundGridRgba: 'rgba(52, 211, 153, 0.14)',
     roadHex: 0x10b981,
@@ -69,6 +93,12 @@ export const SYSTEM_THEMES: SystemThemeConfig[] = [
     secondaryHex: '#ffb84d',
     warningHex: '#ffd166',
     successHex: '#4ade80',
+    positiveLoopHex: '#ff7a33',
+    positiveLoopNum: 0xff7024,
+    positiveLoopRgb: '255, 122, 51',
+    negativeLoopHex: '#4ade80',
+    negativeLoopNum: 0x3fd678,
+    negativeLoopRgb: '74, 222, 128',
     canvasBgNum: 0x090b10,
     groundGridRgba: 'rgba(255, 120, 30, 0.10)',
     roadHex: 0xd9862b,

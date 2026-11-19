@@ -12,23 +12,28 @@ import {
 } from './emsState.ts';
 
 describe('emsState pure domain helpers', () => {
-  it('places 3D Digital Twin first as 首页 and original overview second as 总览', () => {
+  it('places SVG schematic homepage first as 首页 and 3D Digital Twin in 3D监控 tab', () => {
     assert.deepEqual(
       TOP_NAV_ITEMS.map((item) => [item.key, item.label]),
       [
-        ['twin', '首页'],
+        ['home', '首页'],
         ['overview', '总览'],
         ['devices', '设备监控'],
         ['curves', '曲线报表'],
         ['strategy', '策略'],
+        ['twin', '3D监控'],
       ],
     );
   });
 
   it('resolves toolbar titles across all sections', () => {
     assert.equal(
-      resolvePageTitle({ section: 'twin', deviceModule: 'PCS数据', curveModule: 'SOC曲线', strategyModule: '分时计划' }),
+      resolvePageTitle({ section: 'home', deviceModule: 'PCS数据', curveModule: 'SOC曲线', strategyModule: '分时计划' }),
       '首页',
+    );
+    assert.equal(
+      resolvePageTitle({ section: 'twin', deviceModule: 'PCS数据', curveModule: 'SOC曲线', strategyModule: '分时计划' }),
+      '3D监控',
     );
     assert.equal(
       resolvePageTitle({ section: 'overview', deviceModule: 'PCS数据', curveModule: 'SOC曲线', strategyModule: '分时计划' }),

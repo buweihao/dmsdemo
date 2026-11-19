@@ -1,4 +1,4 @@
-export type TopSection = 'twin' | 'overview' | 'devices' | 'curves' | 'strategy';
+export type TopSection = 'home' | 'overview' | 'devices' | 'curves' | 'strategy' | 'twin';
 
 export type SystemThemeKey = 'aurora-cyan' | 'tech-blue' | 'emerald-grid' | 'amber-scifi';
 
