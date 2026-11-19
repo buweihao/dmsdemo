@@ -228,3 +228,214 @@ export function getElectrolyteUnit(unitId: string | null): ElectrolyteUnitTeleme
 export function toggleHomeViewMode(current: HomeViewMode): HomeViewMode {
   return current === '3d' ? '2d' : '3d';
 }
+
+export type Vec3Tuple = [number, number, number];
+
+export interface ElectrolytePipeRun {
+  id: string;
+  loop: 'positive' | 'negative';
+  kind: 'main' | 'branch';
+  outerRadius: number;
+  innerRadius: number;
+  points: Vec3Tuple[];
+  segmentLengths: number[];
+  totalLength: number;
+}
+
+export interface PolylineSample {
+  position: Vec3Tuple;
+  direction: Vec3Tuple;
+}
+
+function createPipeRun(
+  id: string,
+  loop: 'positive' | 'negative',
+  kind: 'main' | 'branch',
+  outerRadius: number,
+  innerRadius: number,
+  points: Vec3Tuple[],
+): ElectrolytePipeRun {
+  const segmentLengths: number[] = [];
+  let totalLength = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = points[i + 1][0] - points[i][0];
+    const dy = points[i + 1][1] - points[i][1];
+    const dz = points[i + 1][2] - points[i][2];
+    const len = Math.hypot(dx, dy, dz);
+    segmentLengths.push(len);
+    totalLength += len;
+  }
+  return {
+    id,
+    loop,
+    kind,
+    outerRadius,
+    innerRadius,
+    points,
+    segmentLengths,
+    totalLength,
+  };
+}
+
+/**
+ * Generates every pipe run in the positive & negative electrolyte circulation system
+ * ordered strictly in physical flow direction:
+ * Tank bottom -> Pump -> Supply Spine & Headers -> Stack bottom inlets ->
+ * Stack top outlets -> Upper Return Collectors -> Tank top inlet.
+ */
+export function buildElectrolytePipeRuns(): ElectrolytePipeRun[] {
+  const runs: ElectrolytePipeRun[] = [];
+  const stackCoords = getStackCoordinates();
+
+  // --- POSITIVE CIRCUIT ---
+  runs.push(
+    createPipeRun('pos_tank_to_pump', 'positive', 'main', 2.6, 1.65, [
+      [-192, 19, 32],
+      [-192, 19, 96],
+      [-150, 19, 96],
+    ]),
+  );
+  runs.push(
+    createPipeRun('pos_pump_front_supply', 'positive', 'main', 2.45, 1.55, [
+      [-126, 19, 96],
+      [-126, 13, 96],
+      [-126, 13, 72],
+      [89, 13, 72],
+    ]),
+  );
+  runs.push(
+    createPipeRun('pos_spine_back_supply', 'positive', 'main', 2.4, 1.5, [
+      [-126, 13, 72],
+      [-126, 13, -72],
+      [89, 13, -72],
+    ]),
+  );
+  runs.push(
+    createPipeRun('pos_return_front', 'positive', 'main', 2.4, 1.55, [
+      [89, 66, 46],
+      [-134, 66, 46],
+      [-134, 84, 0],
+      [-161, 84, 0],
+    ]),
+  );
+  runs.push(
+    createPipeRun('pos_return_back', 'positive', 'main', 2.4, 1.55, [
+      [89, 66, -46],
+      [-134, 66, -46],
+      [-134, 84, 0],
+      [-161, 84, 0],
+    ]),
+  );
+
+  // --- NEGATIVE CIRCUIT ---
+  runs.push(
+    createPipeRun('neg_tank_to_pump', 'negative', 'main', 2.6, 1.65, [
+      [192, 19, 32],
+      [192, 19, 96],
+      [150, 19, 96],
+    ]),
+  );
+  runs.push(
+    createPipeRun('neg_pump_front_supply', 'negative', 'main', 2.45, 1.55, [
+      [126, 19, 96],
+      [126, 10.5, 96],
+      [126, 10.5, 79],
+      [-89, 10.5, 79],
+    ]),
+  );
+  runs.push(
+    createPipeRun('neg_spine_back_supply', 'negative', 'main', 2.4, 1.5, [
+      [126, 10.5, 79],
+      [126, 10.5, -79],
+      [-89, 10.5, -79],
+    ]),
+  );
+  runs.push(
+    createPipeRun('neg_return_front', 'negative', 'main', 2.4, 1.55, [
+      [-89, 74, 46],
+      [134, 74, 46],
+      [134, 84, 0],
+      [161, 84, 0],
+    ]),
+  );
+  runs.push(
+    createPipeRun('neg_return_back', 'negative', 'main', 2.4, 1.55, [
+      [-89, 74, -46],
+      [134, 74, -46],
+      [134, 84, 0],
+      [161, 84, 0],
+    ]),
+  );
+
+  // --- PER-STACK SUPPLY & RETURN RISERS (ALL 12 STACKS x 4 PORTS = 48 BRANCHES) ---
+  stackCoords.forEach((coord) => {
+    const posHeaderZ = coord.row === 0 ? -72 : 72;
+    const negHeaderZ = coord.row === 0 ? -79 : 79;
+
+    runs.push(
+      createPipeRun(`${coord.id}_pos_in`, 'positive', 'branch', 1.55, 1.0, [
+        [coord.x - 6, 13, posHeaderZ],
+        [coord.x - 6, 13, coord.z],
+        [coord.x - 6, 17, coord.z],
+      ]),
+    );
+    runs.push(
+      createPipeRun(`${coord.id}_pos_out`, 'positive', 'branch', 1.55, 1.0, [
+        [coord.x - 6, 54, coord.z],
+        [coord.x - 6, 66, coord.z],
+      ]),
+    );
+    runs.push(
+      createPipeRun(`${coord.id}_neg_in`, 'negative', 'branch', 1.55, 1.0, [
+        [coord.x + 6, 10.5, negHeaderZ],
+        [coord.x + 6, 10.5, coord.z],
+        [coord.x + 6, 17, coord.z],
+      ]),
+    );
+    runs.push(
+      createPipeRun(`${coord.id}_neg_out`, 'negative', 'branch', 1.55, 1.0, [
+        [coord.x + 6, 54, coord.z],
+        [coord.x + 6, 74, coord.z],
+      ]),
+    );
+  });
+
+  return runs;
+}
+
+export function samplePolylineAtDistance(
+  run: ElectrolytePipeRun,
+  distance: number,
+): PolylineSample {
+  if (run.totalLength <= 0 || run.points.length < 2) {
+    return { position: run.points[0] ?? [0, 0, 0], direction: [0, 1, 0] };
+  }
+
+  let d = ((distance % run.totalLength) + run.totalLength) % run.totalLength;
+  for (let i = 0; i < run.segmentLengths.length; i++) {
+    const segLen = run.segmentLengths[i];
+    if (d <= segLen || i === run.segmentLengths.length - 1) {
+      const a = run.points[i];
+      const b = run.points[i + 1];
+      const t = segLen > 0 ? Math.min(1, Math.max(0, d / segLen)) : 0;
+      const invLen = segLen > 0 ? 1 / segLen : 1;
+      return {
+        position: [
+          a[0] + (b[0] - a[0]) * t,
+          a[1] + (b[1] - a[1]) * t,
+          a[2] + (b[2] - a[2]) * t,
+        ],
+        direction: [
+          (b[0] - a[0]) * invLen,
+          (b[1] - a[1]) * invLen,
+          (b[2] - a[2]) * invLen,
+        ],
+      };
+    }
+    d -= segLen;
+  }
+
+  const last = run.points[run.points.length - 1];
+  return { position: last, direction: [0, 1, 0] };
+}
+

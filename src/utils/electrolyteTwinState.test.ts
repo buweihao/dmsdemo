@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  buildElectrolytePipeRuns,
   ELECTROLYTE_CAMERAS,
   ELECTROLYTE_CAMERA_LIST,
   ELECTROLYTE_UNITS,
   getElectrolyteUnit,
   getStackCoordinates,
+  samplePolylineAtDistance,
   toggleHomeViewMode,
 } from './electrolyteTwinState.ts';
 
@@ -46,5 +48,24 @@ describe('electrolyteTwinState', () => {
     assert.equal(ELECTROLYTE_CAMERA_LIST.length, 5);
     assert.equal(ELECTROLYTE_CAMERAS.overview.label, '全景视图');
     assert.ok(ELECTROLYTE_CAMERAS.overview.eye[1] > 100);
+  });
+
+  it('registers all 58 positive and negative pipe runs with valid lengths and directional pulse sampling', () => {
+    const runs = buildElectrolytePipeRuns();
+    assert.equal(runs.length, 58);
+
+    const posRuns = runs.filter((r) => r.loop === 'positive');
+    const negRuns = runs.filter((r) => r.loop === 'negative');
+    assert.equal(posRuns.length, 29);
+    assert.equal(negRuns.length, 29);
+
+    runs.forEach((run) => {
+      assert.ok(run.totalLength > 0, `pipe ${run.id} should have positive length`);
+      const sampleStart = samplePolylineAtDistance(run, 0);
+      const sampleMid = samplePolylineAtDistance(run, run.totalLength * 0.5);
+      const dirMag = Math.hypot(...sampleMid.direction);
+      assert.ok(Math.abs(dirMag - 1) < 1e-6, `pipe ${run.id} direction should be unit length`);
+      assert.deepEqual(sampleStart.position, run.points[0]);
+    });
   });
 });

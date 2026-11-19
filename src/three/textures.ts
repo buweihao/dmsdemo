@@ -167,6 +167,48 @@ export function createFlowGradientTexture(
   return tex;
 }
 
+/**
+ * Creates a crisp high-contrast vertical-scrolling liquid pulse texture for
+ * length-normalized 3D pipe cylinders so flow dashes are clearly visible along
+ * every straight segment and around every 90-degree elbow.
+ */
+export function createPipeDashFlowTexture(
+  colorHex: string,
+  maxAnisotropy: number,
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  // Base tinted translucent fluid background so pipes stay continuously legible
+  ctx.fillStyle = colorHex;
+  ctx.globalAlpha = 0.28;
+  ctx.fillRect(0, 0, 64, 256);
+  ctx.globalAlpha = 1;
+
+  // Two crisp luminous directional liquid pulses per cycle (bright leading head + soft trail)
+  const drawPulse = (headY: number, tailLen: number) => {
+    const grad = ctx.createLinearGradient(0, headY, 0, headY + tailLen);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+    grad.addColorStop(0.22, '#ffffff');
+    grad.addColorStop(0.5, colorHex);
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, headY, 64, tailLen);
+  };
+
+  drawPulse(18, 76);
+  drawPulse(146, 76);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
 export function createRoomMarkerTexture(
   indexCode: string,
   roomName: string,

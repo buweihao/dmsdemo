@@ -1,22 +1,91 @@
 import * as THREE from 'three';
 import type { SystemThemeConfig } from '../data/themes';
-import { getStackCoordinates } from '../utils/electrolyteTwinState';
 import {
-  createFlowGradientTexture,
+  buildElectrolytePipeRuns,
+  getStackCoordinates,
+  samplePolylineAtDistance,
+  type ElectrolytePipeRun,
+} from '../utils/electrolyteTwinState';
+import {
   createHexGridTexture,
+  createPipeDashFlowTexture,
   createRadarRingTexture,
   createRoomMarkerTexture,
 } from './textures';
+
+export interface FlowBeadSpec {
+  run: ElectrolytePipeRun;
+  phaseOffset: number;
+  scaleRadius: number;
+  scaleLength: number;
+}
 
 export interface ElectrolyteAnimRefs {
   radarRings: THREE.Mesh[];
   impellers: THREE.Group[];
   positiveFlowTextures: THREE.CanvasTexture[];
   negativeFlowTextures: THREE.CanvasTexture[];
+  positiveBeadMesh: THREE.InstancedMesh | null;
+  negativeBeadMesh: THREE.InstancedMesh | null;
+  positiveBeads: FlowBeadSpec[];
+  negativeBeads: FlowBeadSpec[];
   liquidSurfaces: THREE.Mesh[];
   pulseRings: THREE.Mesh[];
   selectionRing: THREE.Mesh | null;
   unitAnchorPositions: Map<string, THREE.Vector3>;
+}
+
+export const PIPE_PULSE_WAVELENGTH = 34;
+export const PIPE_FLOW_SPEED = 42; // world units per second across every pipe
+
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+const tmpPos = new THREE.Vector3();
+const tmpDir = new THREE.Vector3();
+const tmpQuat = new THREE.Quaternion();
+const tmpScale = new THREE.Vector3();
+const tmpMat = new THREE.Matrix4();
+
+function setQuaternionFromUpToDir(targetQuat: THREE.Quaternion, dir: THREE.Vector3) {
+  if (dir.y < -0.9999) {
+    targetQuat.setFromAxisAngle(X_AXIS, Math.PI);
+  } else {
+    targetQuat.setFromUnitVectors(UP_AXIS, dir);
+  }
+}
+
+export function updateElectrolyteFlowAnimation(
+  refs: ElectrolyteAnimRefs,
+  elapsed: number,
+) {
+  // 1. Scroll vertical UV flow textures at exact matching world speed (A -> B)
+  const vOffset = -((elapsed * PIPE_FLOW_SPEED) / PIPE_PULSE_WAVELENGTH) % 1;
+  refs.positiveFlowTextures.forEach((tex) => {
+    tex.offset.y = vOffset;
+  });
+  refs.negativeFlowTextures.forEach((tex) => {
+    tex.offset.y = vOffset;
+  });
+
+  // 2. Advance luminous directional flow capsules along every single pipe run
+  const updateBeads = (mesh: THREE.InstancedMesh | null, beads: FlowBeadSpec[]) => {
+    if (!mesh || beads.length === 0) return;
+    for (let i = 0; i < beads.length; i++) {
+      const spec = beads[i];
+      const dist = spec.phaseOffset + elapsed * PIPE_FLOW_SPEED;
+      const sample = samplePolylineAtDistance(spec.run, dist);
+      tmpPos.set(sample.position[0], sample.position[1], sample.position[2]);
+      tmpDir.set(sample.direction[0], sample.direction[1], sample.direction[2]);
+      setQuaternionFromUpToDir(tmpQuat, tmpDir);
+      tmpScale.set(spec.scaleRadius, spec.scaleLength, spec.scaleRadius);
+      tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+      mesh.setMatrixAt(i, tmpMat);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+
+  updateBeads(refs.positiveBeadMesh, refs.positiveBeads);
+  updateBeads(refs.negativeBeadMesh, refs.negativeBeads);
 }
 
 function tagUnit(obj: THREE.Object3D, unitId: string) {
@@ -26,36 +95,75 @@ function tagUnit(obj: THREE.Object3D, unitId: string) {
   });
 }
 
-function createPipeAlongPoints(
-  points: [number, number, number][],
-  outerRadius: number,
-  innerRadius: number,
+/**
+ * Builds a twist-free multi-segment pipe from straight cylinders with world-length-normalized,
+ * phase-continuous V coordinates so every straight run and 90-deg elbow shows identical crisp flow.
+ */
+function buildUniformFlowPipe(
+  run: ElectrolytePipeRun,
   outerMat: THREE.Material,
   flowMat: THREE.Material,
-  tubularSegments = 48,
 ): THREE.Group {
   const group = new THREE.Group();
-  const path = new THREE.CurvePath<THREE.Vector3>();
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = new THREE.Vector3(...points[i]);
-    const b = new THREE.Vector3(...points[i + 1]);
-    if (a.distanceToSquared(b) > 0.01) {
-      path.add(new THREE.LineCurve3(a, b));
+  let cumDist = 0;
+
+  for (let i = 0; i < run.points.length - 1; i++) {
+    const a = new THREE.Vector3(...run.points[i]);
+    const b = new THREE.Vector3(...run.points[i + 1]);
+    const segVec = new THREE.Vector3().subVectors(b, a);
+    const segLen = segVec.length();
+    if (segLen < 0.05) continue;
+
+    const dir = segVec.clone().divideScalar(segLen);
+    const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+    const quat = new THREE.Quaternion();
+    setQuaternionFromUpToDir(quat, dir);
+
+    // Outer translucent glass jacket
+    const outerGeo = new THREE.CylinderGeometry(
+      run.outerRadius,
+      run.outerRadius,
+      segLen,
+      12,
+      1,
+      true,
+    );
+    const outerMesh = new THREE.Mesh(outerGeo, outerMat);
+    outerMesh.position.copy(mid);
+    outerMesh.quaternion.copy(quat);
+    group.add(outerMesh);
+
+    // Inner scrolling directional liquid core with continuous world-space V coordinates
+    const innerGeo = new THREE.CylinderGeometry(
+      run.innerRadius,
+      run.innerRadius,
+      segLen,
+      10,
+      1,
+      true,
+    );
+    const uvAttr = innerGeo.attributes.uv;
+    for (let uIdx = 0; uIdx < uvAttr.count; uIdx++) {
+      const origV = uvAttr.getY(uIdx); // 0 at point A -> 1 at point B
+      const worldV = (cumDist + origV * segLen) / PIPE_PULSE_WAVELENGTH;
+      uvAttr.setY(uIdx, worldV);
     }
+    uvAttr.needsUpdate = true;
+
+    const innerMesh = new THREE.Mesh(innerGeo, flowMat);
+    innerMesh.position.copy(mid);
+    innerMesh.quaternion.copy(quat);
+    group.add(innerMesh);
+
+    cumDist += segLen;
   }
-  if (path.curves.length === 0) return group;
 
-  const outerGeo = new THREE.TubeGeometry(path, tubularSegments, outerRadius, 10, false);
-  const innerGeo = new THREE.TubeGeometry(path, tubularSegments, innerRadius, 8, false);
-  group.add(new THREE.Mesh(outerGeo, outerMat));
-  group.add(new THREE.Mesh(innerGeo, flowMat));
-
-  // Add subtle elbow spheres at bend vertices so 90-deg bends look machined
-  if (points.length > 2) {
-    const jointGeo = new THREE.SphereGeometry(outerRadius * 1.18, 10, 8);
-    for (let i = 1; i < points.length - 1; i++) {
+  // Machined elbow joints at every intermediate corner vertex
+  if (run.points.length > 2) {
+    const jointGeo = new THREE.SphereGeometry(run.outerRadius * 1.15, 10, 8);
+    for (let i = 1; i < run.points.length - 1; i++) {
       const joint = new THREE.Mesh(jointGeo, outerMat);
-      joint.position.set(...points[i]);
+      joint.position.set(...run.points[i]);
       group.add(joint);
     }
   }
@@ -530,6 +638,10 @@ export function buildElectrolyteTwinScene(
     impellers: [],
     positiveFlowTextures: [],
     negativeFlowTextures: [],
+    positiveBeadMesh: null,
+    negativeBeadMesh: null,
+    positiveBeads: [],
+    negativeBeads: [],
     liquidSurfaces: [],
     pulseRings: [],
     selectionRing: null,
@@ -705,24 +817,25 @@ export function buildElectrolyteTwinScene(
     }),
   );
 
-  // 7. Dual-Circuit 3D Pipe Manifolds with Directional Scrolling Electrolyte Flow
+  // 7. Dual-Circuit 3D Pipe Manifolds — 100% of all 58 pipes with uniform flow & gliding pulses
   const posOuterMat = new THREE.MeshStandardMaterial({
     color: theme.positiveLoopNum,
-    roughness: 0.2,
-    metalness: 0.35,
+    roughness: 0.16,
+    metalness: 0.3,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.28,
+    depthWrite: false,
   });
   const negOuterMat = new THREE.MeshStandardMaterial({
     color: theme.negativeLoopNum,
-    roughness: 0.2,
-    metalness: 0.35,
+    roughness: 0.16,
+    metalness: 0.3,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.28,
+    depthWrite: false,
   });
 
-  const posFlowTex = createFlowGradientTexture(theme.positiveLoopHex, maxAnisotropy);
-  posFlowTex.repeat.set(7, 1);
+  const posFlowTex = createPipeDashFlowTexture(theme.positiveLoopHex, maxAnisotropy);
   refs.positiveFlowTextures.push(posFlowTex);
   const posFlowMat = new THREE.MeshBasicMaterial({
     map: posFlowTex,
@@ -730,10 +843,10 @@ export function buildElectrolyteTwinScene(
     opacity: 0.96,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
 
-  const negFlowTex = createFlowGradientTexture(theme.negativeLoopHex, maxAnisotropy);
-  negFlowTex.repeat.set(7, 1);
+  const negFlowTex = createPipeDashFlowTexture(theme.negativeLoopHex, maxAnisotropy);
   refs.negativeFlowTextures.push(negFlowTex);
   const negFlowMat = new THREE.MeshBasicMaterial({
     map: negFlowTex,
@@ -741,229 +854,74 @@ export function buildElectrolyteTwinScene(
     opacity: 0.96,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
 
-  const posBranchFlowTex = createFlowGradientTexture(theme.positiveLoopHex, maxAnisotropy);
-  posBranchFlowTex.repeat.set(2.5, 1);
-  refs.positiveFlowTextures.push(posBranchFlowTex);
-  const posBranchMat = new THREE.MeshBasicMaterial({
-    map: posBranchFlowTex,
+  const allPipeRuns = buildElectrolytePipeRuns();
+  const BEAD_SPACING_MAIN = 26;
+  const BEAD_SPACING_BRANCH = 18;
+
+  allPipeRuns.forEach((run) => {
+    const outerMat = run.loop === 'positive' ? posOuterMat : negOuterMat;
+    const flowMat = run.loop === 'positive' ? posFlowMat : negFlowMat;
+    root.add(buildUniformFlowPipe(run, outerMat, flowMat));
+
+    const spacing = run.kind === 'main' ? BEAD_SPACING_MAIN : BEAD_SPACING_BRANCH;
+    const count = Math.max(1, Math.round(run.totalLength / spacing));
+    const targetBeads = run.loop === 'positive' ? refs.positiveBeads : refs.negativeBeads;
+    const scaleRadius = run.kind === 'main' ? 1.15 : 0.78;
+    const scaleLength = run.kind === 'main' ? 1.0 : 0.62;
+
+    for (let k = 0; k < count; k++) {
+      targetBeads.push({
+        run,
+        phaseOffset: (k * run.totalLength) / count,
+        scaleRadius,
+        scaleLength,
+      });
+    }
+  });
+
+  // Luminous gliding liquid pulse capsules inside every single pipe (2 instanced draw calls total)
+  const beadGeo = new THREE.CapsuleGeometry(1.15, 5.4, 4, 8);
+  const posBeadMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
     transparent: true,
     opacity: 0.92,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
+  posBeadMat.color.set(theme.positiveLoopHex).lerp(new THREE.Color(0xffffff), 0.58);
 
-  const negBranchFlowTex = createFlowGradientTexture(theme.negativeLoopHex, maxAnisotropy);
-  negBranchFlowTex.repeat.set(2.5, 1);
-  refs.negativeFlowTextures.push(negBranchFlowTex);
-  const negBranchMat = new THREE.MeshBasicMaterial({
-    map: negBranchFlowTex,
+  const negBeadMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
     transparent: true,
     opacity: 0.92,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
+  negBeadMat.color.set(theme.negativeLoopHex).lerp(new THREE.Color(0xffffff), 0.58);
 
-  // --- POSITIVE SUPPLY LOOP (Left Tank -> Pos Pump -> Bottom Stack Inlets) ---
-  root.add(
-    createPipeAlongPoints(
-      [
-        [-192, 19, 32],
-        [-192, 19, 96],
-        [-152, 19, 96],
-      ],
-      2.6,
-      1.65,
-      posOuterMat,
-      posFlowMat,
-      32,
-    ),
-  );
-  // Pos Pump discharge spine to front & back supply headers
-  root.add(
-    createPipeAlongPoints(
-      [
-        [-124, 19, 96],
-        [-124, 13, 96],
-        [-124, 13, 72],
-        [-124, 13, -72],
-      ],
-      2.5,
-      1.6,
-      posOuterMat,
-      posFlowMat,
-      44,
-    ),
-  );
-  // Front & back positive supply headers (left -> right across 6 stacks)
-  [-72, 72].forEach((hz) => {
-    root.add(
-      createPipeAlongPoints(
-        [
-          [-124, 13, hz],
-          [89, 13, hz],
-        ],
-        2.3,
-        1.45,
-        posOuterMat,
-        posFlowMat,
-        40,
-      ),
-    );
-  });
+  if (refs.positiveBeads.length > 0) {
+    const posBeadMesh = new THREE.InstancedMesh(beadGeo, posBeadMat, refs.positiveBeads.length);
+    posBeadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    root.add(posBeadMesh);
+    refs.positiveBeadMesh = posBeadMesh;
+  }
 
-  // --- POSITIVE RETURN LOOP (Top Stack Outlets -> Leftward -> Left Tank Upper Inlet) ---
-  [-46, 46].forEach((rz) => {
-    root.add(
-      createPipeAlongPoints(
-        [
-          [89, 66, rz],
-          [-134, 66, rz],
-          [-134, 84, 0],
-          [-160, 84, 0],
-        ],
-        2.4,
-        1.55,
-        posOuterMat,
-        posFlowMat,
-        52,
-      ),
+  if (refs.negativeBeads.length > 0) {
+    const negBeadMesh = new THREE.InstancedMesh(
+      beadGeo.clone(),
+      negBeadMat,
+      refs.negativeBeads.length,
     );
-  });
+    negBeadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    root.add(negBeadMesh);
+    refs.negativeBeadMesh = negBeadMesh;
+  }
 
-  // --- NEGATIVE SUPPLY LOOP (Right Tank -> Neg Pump -> Bottom Stack Inlets) ---
-  root.add(
-    createPipeAlongPoints(
-      [
-        [192, 19, 32],
-        [192, 19, 96],
-        [152, 19, 96],
-      ],
-      2.6,
-      1.65,
-      negOuterMat,
-      negFlowMat,
-      32,
-    ),
-  );
-  // Neg Pump discharge spine to front & back supply headers
-  root.add(
-    createPipeAlongPoints(
-      [
-        [124, 19, 96],
-        [124, 10.5, 96],
-        [124, 10.5, 79],
-        [124, 10.5, -79],
-      ],
-      2.5,
-      1.6,
-      negOuterMat,
-      negFlowMat,
-      44,
-    ),
-  );
-  // Front & back negative supply headers (right -> left across 6 stacks)
-  [-79, 79].forEach((hz) => {
-    root.add(
-      createPipeAlongPoints(
-        [
-          [124, 10.5, hz],
-          [-89, 10.5, hz],
-        ],
-        2.3,
-        1.45,
-        negOuterMat,
-        negFlowMat,
-        40,
-      ),
-    );
-  });
-
-  // --- NEGATIVE RETURN LOOP (Top Stack Outlets -> Rightward -> Right Tank Upper Inlet) ---
-  [-46, 46].forEach((rz) => {
-    root.add(
-      createPipeAlongPoints(
-        [
-          [-89, 74, rz],
-          [134, 74, rz],
-          [134, 84, 0],
-          [160, 84, 0],
-        ],
-        2.4,
-        1.55,
-        negOuterMat,
-        negFlowMat,
-        52,
-      ),
-    );
-  });
-
-  // Per-stack supply & return risers connecting headers to every stack's 4 hydraulic ports
-  stackCoords.forEach((coord) => {
-    const posHeaderZ = coord.row === 0 ? -72 : 72;
-    const negHeaderZ = coord.row === 0 ? -79 : 79;
-
-    // Positive bottom supply riser (header -> stack bottom-left port)
-    root.add(
-      createPipeAlongPoints(
-        [
-          [coord.x - 6, 13, posHeaderZ],
-          [coord.x - 6, 13, coord.z],
-          [coord.x - 6, 16.5, coord.z],
-        ],
-        1.45,
-        0.92,
-        posOuterMat,
-        posBranchMat,
-        14,
-      ),
-    );
-    // Positive top return riser (stack top-left port -> upper positive collector)
-    root.add(
-      createPipeAlongPoints(
-        [
-          [coord.x - 6, 55, coord.z],
-          [coord.x - 6, 66, coord.z],
-        ],
-        1.45,
-        0.92,
-        posOuterMat,
-        posBranchMat,
-        10,
-      ),
-    );
-
-    // Negative bottom supply riser (header -> stack bottom-right port)
-    root.add(
-      createPipeAlongPoints(
-        [
-          [coord.x + 6, 10.5, negHeaderZ],
-          [coord.x + 6, 10.5, coord.z],
-          [coord.x + 6, 16.5, coord.z],
-        ],
-        1.45,
-        0.92,
-        negOuterMat,
-        negBranchMat,
-        14,
-      ),
-    );
-    // Negative top return riser (stack top-right port -> upper negative collector)
-    root.add(
-      createPipeAlongPoints(
-        [
-          [coord.x + 6, 55, coord.z],
-          [coord.x + 6, 74, coord.z],
-        ],
-        1.45,
-        0.92,
-        negOuterMat,
-        negBranchMat,
-        10,
-      ),
-    );
-  });
+  // Initialize bead positions at t=0 so the very first rendered frame shows crisp flow pulses everywhere
+  updateElectrolyteFlowAnimation(refs, 0);
 
   // 8. Interactive Selection Highlight Ring (shown beneath clicked equipment)
   const selRing = new THREE.Mesh(

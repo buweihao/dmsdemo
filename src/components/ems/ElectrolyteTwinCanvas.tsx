@@ -5,6 +5,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { SystemThemeConfig } from '../../data/themes';
 import {
   buildElectrolyteTwinScene,
+  updateElectrolyteFlowAnimation,
   type ElectrolyteAnimRefs,
 } from '../../three/electrolyteTwin';
 import {
@@ -142,6 +143,10 @@ export const ElectrolyteTwinCanvas: React.FC<ElectrolyteTwinCanvasProps> = ({
       impellers: [],
       positiveFlowTextures: [],
       negativeFlowTextures: [],
+      positiveBeadMesh: null,
+      negativeBeadMesh: null,
+      positiveBeads: [],
+      negativeBeads: [],
       liquidSurfaces: [],
       pulseRings: [],
       selectionRing: null,
@@ -326,13 +331,8 @@ export const ElectrolyteTwinCanvas: React.FC<ElectrolyteTwinCanvasProps> = ({
         imp.rotation.z = elapsed * (idx === 0 ? -5.6 : 5.6);
       });
 
-      // Scroll glowing electrolyte flow textures along pipes
-      animRefs.positiveFlowTextures.forEach((tex) => {
-        tex.offset.x = (tex.offset.x - delta * 1.15) % 1;
-      });
-      animRefs.negativeFlowTextures.forEach((tex) => {
-        tex.offset.x = (tex.offset.x - delta * 1.15) % 1;
-      });
+      // Scroll length-normalized pipe dash textures & glide directional flow capsules along all 58 pipes
+      updateElectrolyteFlowAnimation(animRefs, elapsed);
 
       // Subtle liquid surface breathing motion
       animRefs.liquidSurfaces.forEach((surf, idx) => {
